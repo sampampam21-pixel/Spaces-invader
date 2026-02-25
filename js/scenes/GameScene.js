@@ -42,6 +42,9 @@ class GameScene extends Phaser.Scene {
 
   update(time, delta) {
     if (!this.gameActive) return;
+    // Guard: physics preUpdate can fire overlap callbacks before this frame's
+    // create() has assigned this.player (e.g. mid-transition frame).
+    if (!this.player || !this.player.active) return;
 
     this._handleMovement(delta);
     this._handleShooting(delta);
@@ -167,6 +170,7 @@ class GameScene extends Phaser.Scene {
   /* ──────────────────────────────────────────────────────── */
 
   _handleMovement(delta) {
+    if (!this.player || !this.player.active) return;
     const p = this.player;
     if (this.cursors.left.isDown  || this.wasd.left.isDown)  p.setVelocityX(-CFG.PLAYER.SPEED);
     else if (this.cursors.right.isDown || this.wasd.right.isDown) p.setVelocityX(CFG.PLAYER.SPEED);
@@ -328,15 +332,22 @@ class GameScene extends Phaser.Scene {
     this._explode(player.x, player.y, 0x00ff41);
 
     if (this.lives <= 0) {
-      player.setVisible(false);
+      // disableBody(disableGameObject, hideGameObject): removes the physics body
+      // from the world AND hides the sprite in one call, preventing any further
+      // overlap callbacks from firing against this sprite.
+      this.player.disableBody(true, true);
+      // Destroy all in-flight enemy bullets so no queued hits fire during
+      // the 1800 ms delay before the scene switches.
+      this.enemyBullets.clear(true, true);
       this._triggerGameOver();
     } else {
-      // Brief flicker + invincibility window
-      this.invincibleMs = 2200;
+      // Post-hit invincibility: 6 flicker cycles × 320 ms (160 ms each way) = 1920 ms.
+      // invincibleMs matches so the window expires exactly when the tween ends.
+      this.invincibleMs = 1920;
       this.tweens.add({
         targets: player, alpha: { from: 0.1, to: 1 },
-        duration: 160, repeat: 7, yoyo: true,
-        onComplete: () => player.setAlpha(1),
+        duration: 160, repeat: 5, yoyo: true,
+        onComplete: () => { if (this.player && this.player.active) this.player.setAlpha(1); },
       });
     }
   }
