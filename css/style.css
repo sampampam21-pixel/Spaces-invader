@@ -1,0 +1,88 @@
+/* ── Reset ─────────────────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ── Page ──────────────────────────────────────────────── */
+body {
+  background: #000011;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: 'Courier New', monospace;
+}
+
+/* ── Game wrapper (800 × 600 fixed frame) ──────────────── */
+#game-wrapper {
+  position: relative;
+  width: 800px;
+  height: 600px;
+  /* Neon border glow */
+  border: 1px solid rgba(0, 255, 255, 0.25);
+  box-shadow:
+    0 0 20px rgba(0, 255, 255, 0.25),
+    0 0 60px rgba(0,   0, 80, 0.6),
+    inset 0 0 40px rgba(0, 0, 20, 0.5);
+}
+
+/* ── Three.js canvas (bottom layer) ─────────────────────── */
+#three-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+}
+
+/* ── Phaser container (middle layer) ─────────────────────── */
+#phaser-container {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+}
+#phaser-container canvas {
+  position: absolute;
+  top: 0; left: 0;
+}
+
+/* ── CRT vignette (above game) ───────────────────────────── */
+#crt-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 8;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 20, 0.55) 100%
+  );
+  animation: crt-flicker 8s infinite;
+}
+
+/* ── Scanlines (topmost) ─────────────────────────────────── */
+#scanlines {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 9;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.12) 2px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+}
+
+/* ── CRT flicker animation ────────────────────────────────── */
+@keyframes crt-flicker {
+  0%,  92%               { opacity: 1.00; }
+  92.5%                  { opacity: 0.93; }
+  93%                    { opacity: 1.00; }
+  95.5%                  { opacity: 0.96; }
+  96%                    { opacity: 1.00; }
+  98.5%                  { opacity: 0.97; }
+  99%                    { opacity: 1.00; }
+}
