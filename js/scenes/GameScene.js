@@ -134,34 +134,51 @@ class GameScene extends Phaser.Scene {
 
   _buildColliders() {
     // Player bullet vs enemies
+    // processCallback: skip pairs where bullet or enemy is already gone this frame
     this.physics.add.overlap(
       this.playerBullets, this.enemies,
-      this._onPlayerHitEnemy, null, this,
+      this._onPlayerHitEnemy,
+      (bullet, enemy) => bullet.active && enemy.active && enemy.alive,
+      this,
     );
 
     // Enemy bullet vs player
+    // processCallback: skip if game ended, player disabled, or invincible
     this.physics.add.overlap(
       this.enemyBullets, this.player,
-      this._onEnemyHitPlayer, null, this,
+      this._onEnemyHitPlayer,
+      (bullet, player) => bullet.active && player.active && this.gameActive && this.invincibleMs <= 0,
+      this,
     );
 
-    // Bullets vs shields
+    // Bullets vs shields – guard both sides before processing
     this.physics.add.overlap(
       this.playerBullets, this.shieldBlocks,
-      (bullet, block) => { bullet.destroy(); this._damageShieldBlock(block); },
-      null, this,
+      (bullet, block) => {
+        if (!bullet.active || !block.active) return;
+        bullet.destroy();
+        this._damageShieldBlock(block);
+      },
+      (bullet, block) => bullet.active && block.active,
+      this,
     );
     this.physics.add.overlap(
       this.enemyBullets, this.shieldBlocks,
-      (bullet, block) => { bullet.destroy(); this._damageShieldBlock(block); },
-      null, this,
+      (bullet, block) => {
+        if (!bullet.active || !block.active) return;
+        bullet.destroy();
+        this._damageShieldBlock(block);
+      },
+      (bullet, block) => bullet.active && block.active,
+      this,
     );
 
     // Enemies touching shields destroys blocks
     this.physics.add.overlap(
       this.enemies, this.shieldBlocks,
-      (_, block) => block.destroy(),
-      null, this,
+      (_, block) => { if (block.active) block.destroy(); },
+      (enemy, block) => enemy.active && block.active,
+      this,
     );
   }
 
@@ -195,7 +212,8 @@ class GameScene extends Phaser.Scene {
   }
 
   _stepEnemies(delta) {
-    const alive = this.enemies.getChildren().filter(e => e.alive);
+    // e.active guards against enemies destroyed in the physics step this frame
+    const alive = this.enemies.getChildren().filter(e => e.alive && e.active);
     if (alive.length === 0) return;
 
     // Speed scales: faster as fewer remain, faster each level
@@ -235,7 +253,7 @@ class GameScene extends Phaser.Scene {
     this.enemyShotMs -= delta;
     if (this.enemyShotMs > 0) return;
 
-    const alive = this.enemies.getChildren().filter(e => e.alive);
+    const alive = this.enemies.getChildren().filter(e => e.alive && e.active);
     if (alive.length === 0) return;
 
     // Pick the bottom enemy in a random column (classic Space Invaders rule)
@@ -282,16 +300,21 @@ class GameScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.playerBullets, this.mysteryShip,
       (bullet, ship) => {
-        if (!this.gameActive) return;
+        // Double-guard: processCallback already filters, but a second bullet
+        // in the same frame could pass processCallback before the first hit
+        // sets active=false, so check again here.
+        if (!this.gameActive || !bullet.active || !ship.active) return;
+        const sx = ship.x, sy = ship.y;
         bullet.destroy();
-        this.score += CFG.MYSTERY.SCORE;
-        this._explode(ship.x, ship.y, 0xff0040);
-        this._floatScore(ship.x, ship.y, CFG.MYSTERY.SCORE, '#ff0040');
         ship.destroy();
         this.mysteryShip = null;
+        this.score += CFG.MYSTERY.SCORE;
+        this._explode(sx, sy, 0xff0040);
+        this._floatScore(sx, sy, CFG.MYSTERY.SCORE, '#ff0040');
         this._emitHUD();
       },
-      null, this,
+      (bullet, ship) => bullet.active && ship.active && this.gameActive,
+      this,
     );
   }
 
@@ -300,7 +323,8 @@ class GameScene extends Phaser.Scene {
   /* ──────────────────────────────────────────────────────── */
 
   _onPlayerHitEnemy(bullet, enemy) {
-    if (!enemy.alive || !this.gameActive) return;
+    // Double-guard (processCallback is the primary filter, this is the safety net)
+    if (!enemy.alive || !enemy.active || !bullet.active || !this.gameActive) return;
     bullet.destroy();
     enemy.alive = false;
 
@@ -313,7 +337,7 @@ class GameScene extends Phaser.Scene {
     this._emitHUD();
 
     // All enemies cleared → next level
-    const remaining = this.enemies.getChildren().filter(e => e.alive).length;
+    const remaining = this.enemies.getChildren().filter(e => e.alive && e.active).length;
     if (remaining === 0) {
       this.gameActive = false;
       this.time.delayedCall(1400, () => {
@@ -325,7 +349,8 @@ class GameScene extends Phaser.Scene {
   }
 
   _onEnemyHitPlayer(bullet, player) {
-    if (!this.gameActive || this.invincibleMs > 0) return;
+    // processCallback is the primary filter; this is a last-resort safety net
+    if (!this.gameActive || this.invincibleMs > 0 || !bullet.active || !player.active) return;
     bullet.destroy();
     this.lives--;
     this._emitHUD();
@@ -353,13 +378,17 @@ class GameScene extends Phaser.Scene {
   }
 
   _damageShieldBlock(block) {
+    // Guard against double-hit in the same frame (block destroyed by a prior callback)
+    if (!block || !block.active) return;
     block.health--;
     if (block.health <= 0) {
       block.destroy();
     } else {
       const tints = [0x00ff41, 0x00aa28, 0x005514];
       block.setTint(tints[block.health - 1]);
-      this.shieldBlocks.refresh();
+      // refresh() not called: it iterates ALL group children and calls body.reset()
+      // on each, which throws if any sibling was destroyed this frame.
+      // Tint changes on static bodies need no refresh.
     }
   }
 
